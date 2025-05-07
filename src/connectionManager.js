@@ -84,7 +84,11 @@ class ConnectionManager {
     async disconnect(id) {
         const connection = this.activeConnections.get(id);
         if (connection) {
-            await connection.end();
+            try{
+                await connection.end();
+            }catch(e){
+                console.log(e);
+            }
             this.activeConnections.delete(id);
         }
         

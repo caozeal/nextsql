@@ -1,7 +1,7 @@
 {
   "name": "nextsql",
   "displayName": "NextSQL",
-  "description": "MySQL 连接管理器",
+  "description": "SQL 连接管理器",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.60.0"
@@ -9,10 +9,12 @@
   "categories": [
     "Other"
   ],
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/caozeal/nextsql.git"
   },
+  "publisher": "caozeal",
   "activationEvents": [
     "onView:mysqlExplorer",
     "onCommand:nextsql.addConnection",
@@ -23,8 +25,8 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "mysql-explorer",
-          "title": "MySQL",
+          "id": "sql-explorer",
+          "title": "NextSQL",
           "icon": "media/database.svg"
         }
       ]
