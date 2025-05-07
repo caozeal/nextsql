@@ -1,0 +1,153 @@
+{
+  "name": "nextsql",
+  "displayName": "NextSQL",
+  "description": "MySQL 连接管理器",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:mysqlExplorer",
+    "onCommand:nextsql.addConnection",
+    "onCommand:nextsql.executeQuery"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "mysql-explorer",
+          "title": "MySQL",
+          "icon": "media/database.svg"
+        }
+      ]
+    },
+    "views": {
+      "mysql-explorer": [
+        {
+          "id": "mysqlExplorer",
+          "name": "数据库"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "nextsql.addConnection",
+        "title": "添加连接",
+        "category": "NextSQL",
+        "icon": "$(add)"
+      },
+      {
+        "command": "nextsql.editConnection",
+        "title": "编辑连接",
+        "category": "NextSQL",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "nextsql.removeConnection",
+        "title": "删除连接",
+        "category": "NextSQL",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "nextsql.connect",
+        "title": "连接",
+        "category": "NextSQL",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "nextsql.disconnect",
+        "title": "断开连接",
+        "category": "NextSQL",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "nextsql.executeQuery",
+        "title": "执行查询",
+        "category": "NextSQL",
+        "icon": "$(play)"
+      },
+      {
+        "command": "nextsql.onNodeDoubleClick",
+        "title": "查看表数据",
+        "category": "NextSQL",
+        "icon": "$(table)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "nextsql.addConnection",
+          "when": "view == mysqlExplorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "nextsql.editConnection",
+          "when": "viewItem == connection",
+          "group": "inline"
+        },
+        {
+          "command": "nextsql.connect",
+          "when": "viewItem == connection",
+          "group": "inline"
+        },
+        {
+          "command": "nextsql.disconnect",
+          "when": "viewItem == connectedConnection",
+          "group": "inline"
+        },
+        {
+          "command": "nextsql.removeConnection",
+          "when": "viewItem == connection || viewItem == connectedConnection",
+          "group": "inline"
+        },
+        {
+          "command": "nextsql.onNodeDoubleClick",
+          "when": "viewItem == table",
+          "group": "inline"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "nextsql.executeQuery",
+          "when": "editorTextFocus",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "NextSQL",
+      "properties": {
+        "nextsql.connections": {
+          "type": "array",
+          "default": [],
+          "description": "MySQL 连接配置"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "node ./test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.60.0",
+    "@types/glob": "^7.1.3",
+    "@types/mocha": "^8.2.2",
+    "@types/node": "14.x",
+    "eslint": "^7.27.0",
+    "glob": "^7.1.7",
+    "mocha": "^8.4.0",
+    "typescript": "^4.3.2",
+    "vscode-test": "^1.5.2"
+  },
+  "dependencies": {
+    "mysql2": "^2.3.0"
+  }
+}
