@@ -62,7 +62,9 @@ class ConnectionManager {
                 port: connConfig.port,
                 user: connConfig.user,
                 password: connConfig.password,
-                database: connConfig.database
+                database: connConfig.database,
+                supportBigNumbers: true,
+                bigNumberStrings: true
             });
             
             this.activeConnections.set(id, connection);
@@ -99,19 +101,34 @@ class ConnectionManager {
     }
 
     // 执行查询
-    async executeQuery(connectionId, query) {
-        let connection = this.activeConnections.get(connectionId);
-        
-        if (!connection) {
-            connection = await this.connect(connectionId);
+    async executeQuery(connectionId, query, options = {}) {
+        if (!this.isConnected(connectionId)) {
+            throw new Error('数据库未连接');
         }
         
+        const connection = this.activeConnections.get(connectionId);
+        
+        // 设置查询选项，将 bigint 作为字符串返回
+        const queryOptions = {
+            supportBigNumbers: true,
+            bigNumberStrings: options.bigIntAsString !== undefined ? options.bigIntAsString : true
+        };
+        
         try {
-            const [rows] = await connection.query(query);
+            // 检查是否是不支持预处理语句的命令
+            const isSpecialCommand = /^(SHOW|USE|DESC|DESCRIBE|EXPLAIN)/i.test(query.trim());
+            
+            let rows;
+            if (isSpecialCommand) {
+                // 对于特殊命令使用 query() 方法
+                [rows] = await connection.query(query, queryOptions);
+            } else {
+                // 对于普通查询使用 execute() 方法
+                [rows] = await connection.execute(query, [], queryOptions);
+            }
             return rows;
         } catch (error) {
-            vscode.window.showErrorMessage(`查询失败: ${error.message}`);
-            throw error;
+            throw new Error(`查询执行失败: ${error.message}`);
         }
     }
 

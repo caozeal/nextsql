@@ -35,7 +35,7 @@ class SqlCodeLensProvider {
             const range = new vscode.Range(startPos, endPos);
             
             const codeLens = new vscode.CodeLens(range, {
-                title: '▶ 执行查询',
+                title: '▶ execute query',
                 command: 'nextsql.executeQuery',
                 arguments: [range]
             });
@@ -62,7 +62,7 @@ function activate(context) {
     const databaseExplorer = new DatabaseExplorer(connectionManager);
     
     // 注册视图
-    const treeView = vscode.window.createTreeView('mysqlExplorer', {
+    const treeView = vscode.window.createTreeView('sqlExplorer', {
         treeDataProvider: databaseExplorer,
         // 添加以下配置以支持双击事件
         showCollapseAll: true
@@ -401,7 +401,8 @@ function deactivate() {}
 // 创建一个统一的函数来显示查询结果
 async function showQueryResults(connectionId, query, title, connectionManager) {
     try {
-        const results = await connectionManager.executeQuery(connectionId, query);
+        // 修改查询选项，将 bigint 作为字符串返回
+        const results = await connectionManager.executeQuery(connectionId, query, { bigIntAsString: true });
         
         // 创建结果视图
         const panel = vscode.window.createWebviewPanel(
@@ -428,7 +429,17 @@ async function showQueryResults(connectionId, query, title, connectionManager) {
             results.forEach((row, index) => {
                 tableHtml += `<tr class="${index % 2 === 0 ? 'even-row' : 'odd-row'}">`;
                 for (const key in row) {
-                    const value = row[key] !== null ? row[key] : '<span class="null-value">NULL</span>';
+                    // 检查是否为大整数（字符串形式）
+                    let value = row[key];
+                    if (value !== null) {
+                        // 尝试检测是否为大整数字符串
+                        if (typeof value === 'string' && /^\d{15,}$/.test(value)) {
+                            // 为大整数添加特殊样式
+                            value = `<span class="bigint-value">${value}</span>`;
+                        }
+                    } else {
+                        value = '<span class="null-value">NULL</span>';
+                    }
                     tableHtml += `<td>${value}</td>`;
                 }
                 tableHtml += '</tr>';
@@ -516,6 +527,10 @@ async function showQueryResults(connectionId, query, title, connectionManager) {
             color: #999;
             font-style: italic;
         }
+        .bigint-value {
+            color: #0066cc;
+            font-family: monospace;
+        }
         @media (prefers-color-scheme: dark) {
             body { 
                 background-color: #1e1e1e; 
@@ -549,6 +564,9 @@ async function showQueryResults(connectionId, query, title, connectionManager) {
             }
             .null-value {
                 color: #777;
+            }
+            .bigint-value {
+                color: #4da6ff;
             }
         }
     </style>

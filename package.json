@@ -16,7 +16,7 @@
   },
   "publisher": "caozeal",
   "activationEvents": [
-    "onView:mysqlExplorer",
+    "onView:sqlExplorer",
     "onCommand:nextsql.addConnection",
     "onCommand:nextsql.executeQuery"
   ],
@@ -32,9 +32,9 @@
       ]
     },
     "views": {
-      "mysql-explorer": [
+      "sql-explorer": [
         {
-          "id": "mysqlExplorer",
+          "id": "sqlExplorer",
           "name": "数据库"
         }
       ]
@@ -87,7 +87,7 @@
       "view/title": [
         {
           "command": "nextsql.addConnection",
-          "when": "view == mysqlExplorer",
+          "when": "view == sqlExplorer",
           "group": "navigation"
         }
       ],

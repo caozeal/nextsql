@@ -74,6 +74,7 @@ class DatabaseExplorer {
                 });
             } catch (error) {
                 vscode.window.showErrorMessage(`获取表列表失败: ${error.message}`);
+                console.error(`获取表列表失败: ${error.stack}`);
                 return [];
             }
         }
