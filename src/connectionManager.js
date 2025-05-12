@@ -5,9 +5,10 @@ class ConnectionManager {
     constructor() {
         this.connections = new Map();
         this.activeConnections = new Map();
-        this.lastActiveConnectionId = null; // 添加这一行，用于跟踪最近活动的连接
+        this.lastActiveConnectionId = null;
+        this.heartbeatIntervals = new Map(); // 新增：存储心跳定时器
         this.loadConnections();
-        this.onConnectionStatusChanged = null; // 添加事件回调
+        this.onConnectionStatusChanged = null;
     }
 
     // 加载保存的连接
@@ -68,12 +69,34 @@ class ConnectionManager {
             });
             
             this.activeConnections.set(id, connection);
-            // 连接成功后，更新最近活动的连接
             this.lastActiveConnectionId = id;
+            
+            // 设置心跳定时器
+            const heartbeatInterval = setInterval(async () => {
+                try {
+                    if (this.isConnected(id)) {
+                        // 发送简单查询保持连接活跃
+                        await connection.query('SELECT 1');
+                        console.log(`心跳保持连接 ${id} 活跃`);
+                    } else {
+                        // 如果连接已断开，清除定时器
+                        clearInterval(heartbeatInterval);
+                    }
+                } catch (error) {
+                    console.error(`心跳查询失败: ${error.message}`);
+                    // 连接可能已断开，清除定时器
+                    clearInterval(heartbeatInterval);
+                    // 从活动连接中移除
+                    this.activeConnections.delete(id);
+                }
+            }, 30000); // 每30秒发送一次心跳
+            
+            // 存储心跳定时器到单独的 Map 中
+            this.heartbeatIntervals.set(id, heartbeatInterval);
         
             // 触发事件
             if (this.onConnectionStatusChanged) {
-             this.onConnectionStatusChanged();
+                this.onConnectionStatusChanged();
             }
             return connection;
         } catch (error) {
@@ -86,9 +109,15 @@ class ConnectionManager {
     async disconnect(id) {
         const connection = this.activeConnections.get(id);
         if (connection) {
-            try{
+            try {
+                // 清除心跳定时器
+                if (this.heartbeatIntervals.has(id)) {
+                    clearInterval(this.heartbeatIntervals.get(id));
+                    this.heartbeatIntervals.delete(id);
+                }
+                
                 await connection.end();
-            }catch(e){
+            } catch(e) {
                 console.log(e);
             }
             this.activeConnections.delete(id);
@@ -102,31 +131,56 @@ class ConnectionManager {
 
     // 执行查询
     async executeQuery(connectionId, query, options = {}) {
-        if (!this.isConnected(connectionId)) {
-            throw new Error('数据库未连接');
-        }
-        
-        const connection = this.activeConnections.get(connectionId);
-        
-        // 设置查询选项，将 bigint 作为字符串返回
-        const queryOptions = {
-            supportBigNumbers: true,
-            bigNumberStrings: options.bigIntAsString !== undefined ? options.bigIntAsString : true
-        };
-        
         try {
-            // 检查是否是不支持预处理语句的命令
-            const isSpecialCommand = /^(SHOW|USE|DESC|DESCRIBE|EXPLAIN)/i.test(query.trim());
-            
-            let rows;
-            if (isSpecialCommand) {
-                // 对于特殊命令使用 query() 方法
-                [rows] = await connection.query(query, queryOptions);
-            } else {
-                // 对于普通查询使用 execute() 方法
-                [rows] = await connection.execute(query, [], queryOptions);
+            if (!this.isConnected(connectionId)) {
+                // 如果连接不存在，尝试重新连接
+                await this.connect(connectionId);
             }
-            return rows;
+            
+            const connection = this.activeConnections.get(connectionId);
+            
+            // 设置查询选项，将 bigint 作为字符串返回
+            const queryOptions = {
+                supportBigNumbers: true,
+                bigNumberStrings: options.bigIntAsString !== undefined ? options.bigIntAsString : true
+            };
+            
+            try {
+                // 检查是否是不支持预处理语句的命令
+                const isSpecialCommand = /^(SHOW|USE|DESC|DESCRIBE|EXPLAIN)/i.test(query.trim());
+                
+                let rows;
+                if (isSpecialCommand) {
+                    // 对于特殊命令使用 query() 方法
+                    [rows] = await connection.query(query, queryOptions);
+                } else {
+                    // 对于普通查询使用 execute() 方法
+                    [rows] = await connection.execute(query, [], queryOptions);
+                }
+                return rows;
+            } catch (error) {
+                // 检查是否是连接断开的错误
+                if (error.code === 'PROTOCOL_CONNECTION_LOST' || 
+                    error.code === 'ECONNRESET' || 
+                    error.message.includes('Connection lost') ||
+                    error.message.includes('连接超时')) {
+                    
+                    // 连接已断开，尝试重新连接
+                    vscode.window.showInformationMessage('数据库连接已断开，正在重新连接...');
+                    
+                    // 从活动连接中移除
+                    this.activeConnections.delete(connectionId);
+                    
+                    // 重新连接
+                    await this.connect(connectionId);
+                    
+                    // 重试查询
+                    return this.executeQuery(connectionId, query, options);
+                }
+                
+                // 其他错误则直接抛出
+                throw new Error(`查询执行失败: ${error.message}`);
+            }
         } catch (error) {
             throw new Error(`查询执行失败: ${error.message}`);
         }
