@@ -34,6 +34,7 @@ class SqlCodeLensProvider {
             const endPos = document.positionAt(match.index + match[0].length);
             const range = new vscode.Range(startPos, endPos);
             
+            // 添加执行查询的 CodeLens
             const codeLens = new vscode.CodeLens(range, {
                 title: '▶ execute query',
                 command: 'nextsql.executeQuery',
@@ -41,11 +42,24 @@ class SqlCodeLensProvider {
             });
             
             codeLenses.push(codeLens);
+            
+            // // 添加一个额外的按钮 CodeLens
+            // const buttonCodeLens = new vscode.CodeLens(range, {
+            //     title: '▶ execute query to new window',
+            //     command: 'nextsql.executeQueryToNewWindow',  // 修改这里，使用新的命令
+            //     arguments: [range]
+            // });
+            
+            // codeLenses.push(buttonCodeLens);
         }
         
         return codeLenses;
     }
 }
+
+// 存储查询结果面板的引用和状态
+let queryResultPanel = undefined;
+let isPanelDisposed = true;
 
 /**
  * @param {vscode.ExtensionContext} context
@@ -192,6 +206,9 @@ function activate(context) {
         }
     });
     
+    // 存储查询结果面板的引用
+    let queryResultPanel = undefined;
+    
     const executeQueryCommand = vscode.commands.registerCommand('nextsql.executeQuery', async (range) => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -219,9 +236,14 @@ function activate(context) {
         // 获取最近活动的连接
         const lastActiveConnection = connectionManager.getLastActiveConnection();
         
+        // 检查面板是否已被销毁
+        if (queryResultPanel && queryResultPanel.disposed) {
+            queryResultPanel = undefined;
+        }
+        
         if (lastActiveConnection) {
             // 如果有最近活动的连接，直接使用它
-            await showQueryResults(lastActiveConnection.id, query, '查询结果', connectionManager);
+            queryResultPanel = await showQueryResults(lastActiveConnection.id, query, '查询结果', connectionManager, queryResultPanel);
         } else {
             // 如果没有最近活动的连接，则显示连接选择对话框
             const connections = connectionManager.getConnections();
@@ -240,7 +262,7 @@ function activate(context) {
             });
 
             if (selectedConnection) {
-                await showQueryResults(selectedConnection.id, query, '查询结果', connectionManager);
+                queryResultPanel = await showQueryResults(selectedConnection.id, query, '查询结果', connectionManager, queryResultPanel);
             }
         }
     });
@@ -289,15 +311,20 @@ function activate(context) {
     
     // 处理双击节点事件
     const onNodeDoubleClick = vscode.commands.registerCommand('nextsql.onNodeDoubleClick', async (item) => {
-        // 双击表节点时，自动生成并执行 SELECT 查询
-        if (item.type === 'table') {
-            // 更新最近活动的连接
-            connectionManager.lastActiveConnectionId = item.connectionId;
-            
-            const query = `SELECT * FROM \`${item.tableName}\` LIMIT 50`;
-            const title = `${item.tableName} - 查询结果`;
-            await showQueryResults(item.connectionId, query, title, connectionManager);
-        }
+    // 双击表节点时，自动生成并执行 SELECT 查询
+    if (item.type === 'table') {
+    // 更新最近活动的连接
+    connectionManager.lastActiveConnectionId = item.connectionId;
+    
+    // 检查面板是否已被销毁
+    if (queryResultPanel && queryResultPanel.disposed) {
+    queryResultPanel = undefined;
+    }
+    
+    const query = `SELECT * FROM \`${item.tableName}\` LIMIT 50`;
+    const title = `${item.tableName} - 查询结果`;
+    queryResultPanel = await showQueryResults(item.connectionId, query, title, connectionManager, queryResultPanel);
+    }
     });
 
      // 注册SQL CodeLens提供者
@@ -384,6 +411,65 @@ function activate(context) {
     });
     
     context.subscriptions.push(selectActiveConnectionCommand);
+
+    // 注册在新窗口中执行查询的命令
+    const executeQueryToNewWindowCommand = vscode.commands.registerCommand('nextsql.executeQueryToNewWindow', async (range) => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showWarningMessage('没有活动的编辑器');
+            return;
+        }
+        
+        let query;
+        if (range && range instanceof vscode.Range) {
+            // 如果是从CodeLens调用并传递了范围，使用该范围的文本
+            query = editor.document.getText(range);
+        } else {
+            // 否则使用当前选择或整个文档
+            const selection = editor.selection;
+            query = selection.isEmpty 
+                ? editor.document.getText() 
+                : editor.document.getText(selection);
+        }
+        
+        if (!query.trim()) {
+            vscode.window.showWarningMessage('没有选择查询语句');
+            return;
+        }
+        
+        // 获取最近活动的连接
+        const lastActiveConnection = connectionManager.getLastActiveConnection();
+        
+        if (lastActiveConnection) {
+            // 如果有最近活动的连接，直接使用它
+            // 注意这里传递 undefined 作为 existingPanel 参数，强制创建新面板
+            await showQueryResults(lastActiveConnection.id, query, '查询结果', connectionManager, undefined);
+        } else {
+            // 如果没有最近活动的连接，则显示连接选择对话框
+            const connections = connectionManager.getConnections();
+            if (connections.length === 0) {
+                vscode.window.showWarningMessage('没有可用的数据库连接，请先添加连接');
+                return;
+            }
+
+            const connectionItems = connections.map(conn => ({
+                label: conn.name,
+                id: conn.id
+            }));
+
+            const selectedConnection = await vscode.window.showQuickPick(connectionItems, {
+                placeHolder: '选择数据库连接'
+            });
+
+            if (selectedConnection) {
+                // 注意这里传递 undefined 作为 existingPanel 参数，强制创建新面板
+                await showQueryResults(selectedConnection.id, query, '查询结果', connectionManager, undefined);
+            }
+        }
+    });
+    
+    // 将命令添加到订阅中
+    context.subscriptions.push(executeQueryToNewWindowCommand);
     
     // 监听连接状态变化
     connectionManager.onConnectionStatusChanged = () => {
@@ -399,21 +485,46 @@ function activate(context) {
 function deactivate() {}
 
 // 创建一个统一的函数来显示查询结果
-async function showQueryResults(connectionId, query, title, connectionManager) {
+async function showQueryResults(connectionId, query, title, connectionManager, existingPanel) {
     try {
         // 修改查询选项，将 bigint 作为字符串返回
         const results = await connectionManager.executeQuery(connectionId, query, { bigIntAsString: true });
         
-        // 创建结果视图
-        const panel = vscode.window.createWebviewPanel(
-            'queryResults',
-            title,
-            vscode.ViewColumn.Two,
-            {
-                enableScripts: true
-            }
-        );
+        // 创建或重用结果视图
+        let panel = existingPanel;
         
+        // 如果面板不存在或已被销毁，则创建新面板
+        if (!panel || isPanelDisposed) {
+            panel = vscode.window.createWebviewPanel(
+                'queryResults',
+                title,
+                vscode.ViewColumn.Two,
+                {
+                    enableScripts: true,
+                    retainContextWhenHidden: true
+                }
+            );
+            
+            isPanelDisposed = false;
+            
+            // 当面板关闭时，将标志设为 true
+            panel.onDidDispose(() => {
+                isPanelDisposed = true;
+                if (panel === queryResultPanel) {
+                    queryResultPanel = undefined;
+                }
+            });
+        } else {
+            // 如果面板已存在，则更新标题并显示
+            panel.title = title;
+            panel.reveal(vscode.ViewColumn.Two);
+        }
+        
+        // 在检查面板时使用标志
+        if (queryResultPanel && isPanelDisposed) {
+            queryResultPanel = undefined;
+        }
+
         // 生成HTML表格
         let tableHtml = '<table class="data-table">';
         
@@ -581,10 +692,12 @@ async function showQueryResults(connectionId, query, title, connectionManager) {
 </body>
 </html>
 `;
-        return true;
+        
+        // 返回面板引用，以便在下次调用时重用
+        return panel;
     } catch (error) {
         vscode.window.showErrorMessage(`查询执行失败: ${error.message}`);
-        return false;
+        return existingPanel; // 发生错误时返回原有面板
     }
 }
 
