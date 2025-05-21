@@ -540,13 +540,22 @@ async function showQueryResults(connectionId, query, title, connectionManager, e
             results.forEach((row, index) => {
                 tableHtml += `<tr class="${index % 2 === 0 ? 'even-row' : 'odd-row'}">`;
                 for (const key in row) {
-                    // 检查是否为大整数（字符串形式）
+                    // 检查是否为大整数（字符串形式）或日期类型
                     let value = row[key];
                     if (value !== null) {
                         // 尝试检测是否为大整数字符串
                         if (typeof value === 'string' && /^\d{15,}$/.test(value)) {
                             // 为大整数添加特殊样式
                             value = `<span class="bigint-value">${value}</span>`;
+                        } 
+                        // 检测是否为日期类型
+                        else if (value instanceof Date || (typeof value === 'string' && isDateString(value))) {
+                            // 将日期格式化为 YYYYMMDD HH:mm:SS.ssss
+                            const date = value instanceof Date ? value : new Date(value);
+                            if (!isNaN(date.getTime())) {
+                                const formattedDate = formatDate(date);
+                                value = `<span class="date-value">${formattedDate}</span>`;
+                            }
                         }
                     } else {
                         value = '<span class="null-value">NULL</span>';
@@ -642,6 +651,10 @@ async function showQueryResults(connectionId, query, title, connectionManager, e
             color: #0066cc;
             font-family: monospace;
         }
+        .date-value {
+            color: #0066cc;
+            font-family: monospace;
+        }
         @media (prefers-color-scheme: dark) {
             body { 
                 background-color: #1e1e1e; 
@@ -704,4 +717,38 @@ async function showQueryResults(connectionId, query, title, connectionManager, e
 module.exports = {
     activate,
     deactivate
+}
+
+// 在 deactivate 函数后添加这些辅助函数
+
+// 检查字符串是否为日期格式
+function isDateString(str) {
+    // 检查常见的日期格式
+    if (typeof str !== 'string') return false;
+    
+    // 移除可能的引号
+    str = str.replace(/^['"]|['"]$/g, '');
+    
+    // 检查 ISO 日期格式、MySQL 日期时间格式等
+    const datePatterns = [
+        /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/, // YYYY-MM-DD HH:MM:SS
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, // ISO 格式
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+$/ // 带毫秒的格式
+    ];
+    
+    return datePatterns.some(pattern => pattern.test(str)) && !isNaN(new Date(str).getTime());
+}
+
+// 格式化日期为 YYYYMMDD HH:mm:SS.ssss
+function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(4, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
 }
